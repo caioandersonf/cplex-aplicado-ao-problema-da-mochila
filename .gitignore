@@ -1,0 +1,24 @@
+# Binários e Executáveis
+mochila_solver
+tsp_solver
+teste_cplex
+
+# Modelos LP e Logs do CPLEX
+*.lp
+*.log
+
+# Diretórios de instâncias locais e benchmarks pesados
+kplib-master/
+instances/
+mochila_exemplo.dat
+mochila_grande.dat
+gerador_instancias.py
+benchmark_kplib.py
+
+# Arquivos temporários do compilador
+*.o
+*.out
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db

@@ -1,0 +1,210 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[portuguese]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{hyperref}
+
+\geometry{top=3cm, bottom=3cm, left=2.5cm, right=2.5cm}
+
+% Configuração para exibição de código C++
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+\title{Relatório Técnico: Resolução do Problema da Mochila 0-1 usando CPLEX Concert C++}
+\author{Caio Anderson F.}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introdução}
+O Problema da Mochila 0-1 (0-1 Knapsack Problem) é um clássico problema de otimização combinatória NP-difícil. Dado um conjunto de itens, cada um com um peso e um valor (lucro), o objetivo é selecionar um subconjunto de itens de forma a maximizar o valor total acumulado sem que a soma dos pesos dos itens selecionados ultrapasse a capacidade máxima da mochila.
+
+\section{Formulação Matemática}
+Seja $N$ o número total de itens disponíveis e $W$ a capacidade máxima da mochila. Para cada item $i \in \{1, \dots, N\}$, define-se:
+\begin{itemize}
+    \item $v_i$: o valor (lucro) do item $i$ ($v_i \ge 0$).
+    \item $w_i$: o peso do item $i$ ($w_i \ge 0$).
+\end{itemize}
+
+O problema pode ser formulado como um modelo de Programação Linear Inteira Binária (PLIB) através da definição das variáveis de decisão:
+\[
+x_i = \begin{cases} 
+1, & \text{se o item } i \text{ for selecionado para a mochila} \\
+0, & \text{caso contrário}
+\end{cases}
+\]
+
+A formulação matemática é expressa por:
+
+\begin{alignat}{2}
+\text{Maximizar} \quad & \sum_{i=1}^{N} v_i x_i \label{eq:obj} \\
+\text{Sujeito a} \quad & \sum_{i=1}^{N} w_i x_i \le W \label{eq:capacity} \\
+& x_i \in \{0, 1\}, \quad \forall i \in \{1, \dots, N\} \label{eq:binary}
+\end{alignat}
+
+Onde:
+\begin{itemize}
+    \item A Equação \eqref{eq:obj} define a função objetivo, maximizando o lucro acumulado dos itens selecionados.
+    \item A Restrição \eqref{eq:capacity} garante que a soma dos pesos dos itens inseridos na mochila não exceda a capacidade limite $W$.
+    \item A Restrição \eqref{eq:binary} impõe que a variável de escolha seja binária (decisão 0-1).
+\end{itemize}
+
+\newpage
+\section{Implementação Computacional em C++}
+A seguir é apresentado o trecho principal do solver implementado no arquivo \texttt{mochila\_solver.cpp}, utilizando a API \texttt{CPLEX Concert} em C++:
+
+\begin{lstlisting}[language=C++, caption={Classe KnapsackSolver com formulação CPLEX Concert}]
+class KnapsackSolver {
+public:
+    static void solve(const KnapsackInstance& instance) {
+        int N = instance.get_N();
+        double W = instance.get_capacity();
+        IloEnv env;
+
+        try {
+            IloModel model(env);
+
+            // Variaveis de decisao: x[i] = 1 se selecionado, 0 caso contrario
+            IloBoolVarArray x(env, N);
+
+            // Funcao Objetivo: Maximizar o lucro total
+            IloExpr obj_expr(env);
+            for (int i = 0; i < N; ++i) {
+                obj_expr += instance.get_value(i) * x[i];
+            }
+            model.add(IloMaximize(env, obj_expr));
+            obj_expr.end();
+
+            // Restricao de Capacidade da Mochila: peso total <= W
+            IloExpr weight_expr(env);
+            for (int i = 0; i < N; ++i) {
+                weight_expr += instance.get_weight(i) * x[i];
+            }
+            model.add(weight_expr <= W);
+            weight_expr.end();
+
+            IloCplex cplex(model);
+            cplex.setOut(env.getNullStream()); // Oculta o log padrao do CPLEX
+            cplex.setParam(IloCplex::Param::Threads, 1);
+
+            // Exportacao do modelo matematico para depuracao em formato LP
+            cplex.exportModel("knapsack_model.lp");
+
+            auto start_time = std::chrono::high_resolution_clock::now();
+            if (!cplex.solve()) {
+                std::cerr << "Modelo inviavel ou falha no solver." << std::endl;
+                env.end();
+                return;
+            }
+            auto end_time = std::chrono::high_resolution_clock::now();
+            double elapsed = std::chrono::duration<double>(end_time - start_time).count();
+
+            // Recuperacao e exibicao de estatisticas finais
+            double total_value = cplex.getObjValue();
+            double total_weight = 0.0;
+            std::vector<int> selected_items;
+            for (int i = 0; i < N; ++i) {
+                if (cplex.getValue(x[i]) > 0.5) {
+                    selected_items.push_back(i);
+                    total_weight += instance.get_weight(i);
+                }
+            }
+            // Exibicao dos resultados omitida para concisao...
+        } catch (IloException& e) {
+            std::cerr << "Erro no Concert: " << e << std::endl;
+        }
+        env.end();
+    }
+};
+\end{lstlisting}
+
+\newpage
+\section{Formatos de Instâncias Suportados}
+O resolvedor foi dotado de um parser robusto que realiza a detecção explícita e automática de dois tipos comuns de instâncias:
+
+\subsection{Formato de Cabeçalho Estruturado (Chave-Valor)}
+Este formato é caracterizado por metadados descritos explicitamente e um marcador obrigatório delimitando o início da listagem de itens (\texttt{ITEMS} ou \texttt{DATA}). Permite ainda nomes de itens contendo espaços:
+\begin{verbatim}
+N: 4
+CAPACITY: 100
+ITEMS
+Item Super Premium A 50 40
+Item_B 30 20
+\end{verbatim}
+
+\subsection{Formato Padrão da Literatura (KPLIB)}
+Compatível com as instâncias oficiais da \texttt{KPLIB} (Knapsack Problem Library), sem strings de marcação ou delimitadores chave-valor. O arquivo é composto unicamente por inteiros e reais:
+\begin{verbatim}
+50
+14778
+845 804
+758 448
+\end{verbatim}
+
+\section{Resultados Computacionais}
+O solver foi submetido a baterias de testes com instâncias reais contendo 1.000 itens retiradas da biblioteca benchmark \texttt{KPLIB}. Os tempos de execução refletem o poder de otimização combinatória do resolvedor com CPLEX em hardware moderno:
+
+\begin{table}[htbp]
+\centering
+\caption{Resultados dos testes computacionais na base KPLIB ($N=1000$)}
+\label{tab:results}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Categoria da Instância} & \textbf{Lucro Ótimo} & \textbf{Capacidade Utilizada / Limite} & \textbf{Tempo (s)} \\
+\midrule
+Uncorrelated & 400.792 & 252.461 / 252.480 & 0,0096 s \\
+Weakly Correlated & 273.039 & 245.968 / 245.972 & 0,0140 s \\
+Strongly Correlated & 316.372 & 245.972 / 245.972 & 0,0035 s \\
+Inverse Strongly Correlated & 263.977 & 295.477 / 295.477 & 0,0032 s \\
+Almost Strongly Correlated & 316.408 & 245.972 / 245.972 & 0,0049 s \\
+Subset Sum & 245.972 & 245.972 / 245.972 & 0,0025 s \\
+Uncorrelated Similar Weights & 371.246 & 49.525.300 / 49.530.200 & 0,0025 s \\
+Spanner Uncorrelated & 228.624 & 84.656 / 84.660 & 0,0009 s \\
+Spanner Weakly Correlated & 196.050 & 198.664 / 198.695 & 0,0015 s \\
+Spanner Strongly Correlated & 488.704 & 198.804 / 198.807 & 0,0009 s \\
+Multiple Strongly Correlated & 399.170 & 245.970 / 245.970 & 0,0045 s \\
+Profit Ceiling & 245.874 & 245.971 / 245.972 & 0,0025 s \\
+Circle & 5.182.850 & 245.972 / 245.972 & 0,0025 s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Repositórios e Recursos}
+Os códigos-fonte desenvolvidos e as bases de instâncias utilizadas neste trabalho estão disponíveis nos seguintes endereços eletrônicos:
+\begin{itemize}
+    \item \textbf{Código-Fonte em C++ (CPLEX)}: Repositório com a implementação completa do resolvedor, instruções de compilação e exemplos de execução. \\
+    \url{https://github.com/caioandersonf/cplex-aplicado-ao-problema-da-mochila}
+    \item \textbf{Biblioteca de Instâncias (KPLIB)}: Repositório contendo o conjunto completo de instâncias de benchmark da literatura do problema da mochila 0-1. \\
+    \url{https://github.com/likr/kplib}
+\end{itemize}
+
+\end{document}
