@@ -70,5 +70,6 @@ Item8	184		94
 ## 📚 Estrutura do Repositório
 * `mochila_solver.cpp`: Código-fonte completo em C++ do parser e do solver CPLEX.
 * `mochila_relatorio.tex`: Código LaTeX do relatório técnico com a modelagem e tabelas de resultados.
+* `Relatorio do Problema da Mochila com CPLEX - Caio Anderson Bezerra Fernandes.pdf`: Relatório Técnico em PDF.
 * `Makefile`: Regras de compilação C++ linkando Concert e CPLEX.
 * `.gitignore`: Filtro de arquivos para evitar commitar binários e logs.
